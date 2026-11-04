@@ -102,11 +102,16 @@ if (!/^⚖ 预计 .+ tok 产出 · 上下文 60k · ≈¥0\.\d+ · ~\d+:\d\d$/.t
 refCursor = 0;
 console.log('运行中·收起   ', composer({ useProjection: () => ({ ...idleView, start: 1, end: null }) }));
 
-// 倒计时单调性（m00549）：「估约」必须随 elapsed 增长只减不增。
-// tokens 按 90/s 涨、历史池随 tokens 变（正是原先回涨的触发条件）。
+// 倒计时单调性（m00549 / v1.1.0）：平时「估约」只减不增；跑过冻结目标后允许
+// 一次「再给一步跑道」的重锚，但抬升幅度不得超过 TUNING.RUNWAY_MAX_MS，
+// 且不许再出现长时间卡在「快完了」（那是 1.0.0 的 bug）。
+const tuning = bundle.__internals.TUNING;
+const runwayMaxSeconds = Math.ceil(tuning.RUNWAY_MAX_MS / 1000);
 let previous = Number.POSITIVE_INFINITY;
+let previousSeconds = 0;
 let monotonic = true;
-for (const seconds of [5, 10, 20, 40, 80, 160, 240]) {
+let reanchors = 0;
+for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900]) {
   const view = {
     turn: 42,
     start: Date.now() - seconds * 1000,
@@ -122,11 +127,21 @@ for (const seconds of [5, 10, 20, 40, 80, 160, 240]) {
   const hit = /估约 (\d+):(\d\d)/.exec(text);
   const value = hit === null ? 0 : Number(hit[1]) * 60 + Number(hit[2]);
   if (value > previous) {
+    if (value - previous > runwayMaxSeconds) {
+      monotonic = false;
+      console.log('  回涨过头', previous, '→', value, text);
+    } else {
+      reanchors += 1;
+    }
+  }
+  if (hit === null && seconds >= 400) {
     monotonic = false;
-    console.log('  回涨', previous, '→', value, text);
+    console.log('  卡在快完了', seconds, 's', text);
   }
   previous = value;
+  previousSeconds = seconds;
   console.log(`倒计时 ${String(seconds).padStart(3)}s`, text);
 }
 if (!monotonic) throw new Error('COUNTDOWN_REGRESSION');
-console.log('COUNTDOWN_OK');
+if (reanchors === 0) throw new Error('REANCHOR_NEVER_HAPPENED');
+console.log(`COUNTDOWN_OK (reanchors=${reanchors}, ${previousSeconds}s)`);

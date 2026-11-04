@@ -5,7 +5,7 @@
 1. **对话头部**实时显示本轮耗时、消耗 token、速度、是否在跑工具，以及**剩余时间倒计时**（只减不增）。
 2. **输入框下方**发送前预估：这一轮大概会产出多少 token、按单价折算多少钱（≈¥）、预计要跑多久。
 
-自带默认单价，不依赖 cost-meter 插件也能显示 `≈¥`。
+自带默认单价，不依赖 cost-meter 插件也能显示 `≈¥`。纯文字、无进度条、无动效。
 
 ## 安装
 
@@ -94,8 +94,40 @@ dsh plugin --profile <profile> remove dsh-turn-eta
 ## 说明
 
 - 倒计时用的是「这一轮大概产出多少 token」的历史中位数，再按速度折算；同一轮内目标值会锁死，所以数字只会往下走，工具跑久了也不会往回跳。
+- **跑超了会重给跑道**：到点时如果这一轮还没结束，倒计时不会停在「快完了」装作快好，而是按历史步长再给 2–15 秒，并把超出时长的一部分（25%，上限 15 秒）一起补进去。所以长回合看到数字从「快完了」回到「估约 0:15」是正常的，不是乱跳。
+- **挂机不算数**：某一轮墙钟时间远大于真实干活时间（模型 + 工具，2 倍以上且多 20 秒）时，按真实干活时间记样本，避免一次挂机把之后所有预估拉长。单个离群样本也会被压回中位数的 8 倍以内。
+- 鼠标悬停能看到 `p25–p75` 的历史区间——那是「快慢两种轮次各占到什么位置」，头部只显示一个干净的数。
 - 历史记录存在 `~/.dsh/storages/dsh-turn-eta/history.json`，删掉就重新开始学。
 - 环境变量 `DSH_TURN_ETA_MODEL` 可以临时换用哪个模型的单价。
+
+## 开发
+
+```
+npm test       # 纯函数单测（折叠逻辑 + 倒计时/离群/区间/计价）
+npm run test:sim   # 用假 React 跑一遍真实渲染，打印各场景文本
+```
+
+`lib/client.js` 是 `window.__ModuleLoader__` bundle，不能 `import`，所以纯函数通过 `exports.__internals` 暴露给测试。
+
+## English
+
+Two additions to DeepSeek Harness, rendered as plain inline text (no progress bar, no animation):
+
+1. **Session header**: elapsed time of the current turn, tokens produced, tokens/s, whether a tool is running, and a **remaining-time countdown** that only ever decreases.
+2. **Above the composer**: a pre-send estimate — how many output tokens this turn will probably produce, what it will cost at the configured per-token price (≈¥ by default), and roughly how long it will take.
+
+Default prices are built in, so `≈¥` works without any companion plugin.
+
+- Countdown never stalls: when a turn outlives its estimate, the plugin grants a fresh 2–15 s runway (plus 25% of the overshoot, capped at 15 s) instead of freezing on "almost done".
+- Idle time is filtered out: a turn whose wall-clock time is more than 2× its real model + tool time is sampled at the real time, and single outliers are winsorised at 8× the median duration.
+- Hover the header chip for the `p25–p75` historical interval; the chip itself stays a single number.
+- History lives in `~/.dsh/storages/dsh-turn-eta/history.json`; delete it to relearn from scratch.
+- Override prices in `~/.dsh/storages/dsh-turn-eta/config.json`; `DSH_TURN_ETA_MODEL` picks a different price table.
+
+```
+npm test           # pure-function unit tests
+npm run test:sim   # renders the real components against a fake React
+```
 
 ## 反馈
 
