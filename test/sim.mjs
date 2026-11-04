@@ -102,17 +102,18 @@ if (!/^⚖ 预计 .+ tok 产出 · 上下文 60k · ≈¥0\.\d+ · ~\d+:\d\d$/.t
 refCursor = 0;
 console.log('运行中·收起   ', composer({ useProjection: () => ({ ...idleView, start: 1, end: null }) }));
 
-// 倒计时单调性（m00549 / v1.1.0 / v1.1.1）：平时「估约」只减不增；跑过冻结
-// 目标时允许且只允许一次「再给一步跑道」的重锚（抬升 ≤ TUNING.RUNWAY_MAX_MS），
-// 之后第二轮起必须老实显示「超预估」，不许每帧重发同一段跑道假装还剩 0:15。
+// 倒计时三阶段（v1.1.2）：中位线以内「估约」只减不增；越过中位数改口「最多约」
+// 且只改这一次（目标换成 p75，允许一次合法上抬）；越过 p75 后只显示「超预估」，
+// 不许回头、也不许在 p75 以内就提前喊超预估。
 // 每帧把 refCursor 归零＝复用同一批 useRef 槽位，组件实例与 anchor 才跨帧保留。
 refCursor = 0;
-const tuning = bundle.__internals.TUNING;
-const runwayMaxSeconds = Math.ceil(tuning.RUNWAY_MAX_MS / 1000);
+const { TUNING } = bundle.__internals;
+const runwayMaxSeconds = Math.ceil(TUNING.RUNWAY_MAX_MS / 1000);
 let previous = Number.POSITIVE_INFINITY;
-let staleSeen = false;
+let phase = 'estimate';
 let staleAt = null;
-let reanchors = 0;
+let extendedAt = null;
+let bumps = 0;
 for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900, 1200, 1500]) {
   const view = {
     turn: 42,
@@ -127,25 +128,37 @@ for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900, 1200, 1500]) {
   };
   const text = render(view);
   const stale = text.includes('超预估');
-  const hit = /估约 (\d+):(\d\d)/.exec(text);
+  const hit = /(估约|最多约) (\d+):(\d\d)/.exec(text);
+
   if (stale) {
     if (hit !== null) throw new Error(`STALE_WITH_COUNTDOWN: ${text}`);
     if (staleAt === null) staleAt = seconds;
-    staleSeen = true;
+    if (extendedAt === null) throw new Error(`STALE_BEFORE_MAX: ${seconds}s ${text}`);
+    phase = 'stale';
+    previous = Number.POSITIVE_INFINITY;
   } else {
-    if (staleSeen) throw new Error(`STALE_REGRESSED: ${seconds}s ${text}`);
+    if (phase === 'stale') throw new Error(`STALE_REGRESSED: ${seconds}s ${text}`);
     if (hit === null) throw new Error(`NO_STATE: ${seconds}s ${text}`);
-    const value = Number(hit[1]) * 60 + Number(hit[2]);
+    const level = hit[1] === '最多约' ? 'max' : 'estimate';
+    if (level === 'estimate' && phase !== 'estimate') throw new Error(`PHASE_REGRESSED: ${seconds}s ${text}`);
+    if (level === 'max' && extendedAt === null) {
+      extendedAt = seconds;
+      bumps += 1;
+      if (bumps > 1) throw new Error(`MAX_REPEATED: ${seconds}s ${text}`);
+    }
+    phase = level;
+    const value = Number(hit[2]) * 60 + Number(hit[3]);
     if (value > previous) {
-      if (value - previous > runwayMaxSeconds) {
+      // 只有「估约」升级成「最多约」的那一帧允许抬升，且幅度不超过一步跑道。
+      // 只有「估约」升级成「最多约」的那一帧允许抬升（换成 p75 上界，幅度可以很大）。
+      if (!(level === 'max' && extendedAt === seconds)) {
         console.log('  回涨过头', previous, '→', value, text);
         throw new Error('COUNTDOWN_REGRESSION');
       }
-      reanchors += 1;
     }
     previous = value;
   }
   console.log(`倒计时 ${String(seconds).padStart(3)}s`, text);
 }
-if (!staleSeen) throw new Error('STALE_NEVER_REACHED');
-console.log(`COUNTDOWN_OK (reanchors=${reanchors}, stale-at=${staleAt}s)`);
+if (staleAt === null) throw new Error('STALE_NEVER_REACHED');
+console.log(`COUNTDOWN_OK (extended-at=${extendedAt}s, stale-at=${staleAt}s)`);

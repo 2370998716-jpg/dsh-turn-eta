@@ -120,67 +120,120 @@ test('historyModel：空历史有先验，不会返回 null', () => {
   assert.ok(result.lowMs <= result.highMs);
 });
 
-test('nextEta：正常区间只降不涨，回涨被钳住', () => {
-  const anchor = {
-    targetMs: 150_000,
-    targetTokens: 3000,
-    historyRate: 3000 / 150_000,
+test('nextEta：中位线以内只降不涨', () => {
+  const base = model();
+  let anchor = {
+    targetMs: base.targetMs,
+    baseMs: base.targetMs,
+    ceilingMs: base.highMs,
+    targetTokens: base.targetTokens,
+    historyRate: base.historyRate,
     lastRemaining: null,
-    granted: false,
+    extended: false,
   };
-  let previous = Infinity;
-  for (let seconds = 0; seconds <= 120; seconds += 5) {
-    const eta = nextEta(anchor, seconds * 1000, Math.round(seconds * 20), model());
-    assert.equal(eta.overrun, false, `${seconds}s 不应判为超时`);
-    assert.ok(eta.remainingMs !== null && eta.remainingMs >= 0, `${seconds}s remainingMs 非法`);
-    assert.ok(eta.remainingMs <= previous, `${seconds}s 倒计时回涨：${previous} → ${eta.remainingMs}`);
+  let previous = Number.POSITIVE_INFINITY;
+  for (let elapsed = 0; elapsed < base.targetMs; elapsed += 5_000) {
+    const eta = nextEta(anchor, elapsed, 0, base);
+    assert.equal(eta.overrun, false, `${elapsed}ms 还在 p50 以内，不该报超预估`);
+    assert.equal(eta.extended, false, `${elapsed}ms 不该升级措辞`);
+    assert.ok(eta.remainingMs !== null && eta.remainingMs >= 0, `${elapsed}ms 剩余时间非法`);
+    assert.ok(eta.remainingMs <= previous, `${elapsed}ms 倒计时回涨：${previous} → ${eta.remainingMs}`);
     previous = eta.remainingMs;
-    anchor.lastRemaining = eta.remainingMs;
-    anchor.targetMs = eta.targetMs;
+    anchor = {
+      ...anchor,
+      lastRemaining: eta.remainingMs,
+      targetMs: eta.targetMs,
+      baseMs: eta.baseMs,
+      ceilingMs: eta.ceilingMs,
+      extended: eta.extended,
+    };
   }
 });
 
 test('nextEta：样本刷新最多抬 REANCHOR_JUMP_MS，超过当噪声', () => {
-  const anchor = { targetMs: 150_000, targetTokens: 3000, historyRate: 1 / 50, lastRemaining: 100_000 };
-  const eta = nextEta(anchor, 10_000, 200, model());
-  // byMs = 140_000 > lastRemaining(100_000) + 2000 ⇒ 应被压回 100_000。
-  assert.equal(eta.remainingMs, 100_000);
+  const anchor = {
+    targetMs: 150_000,
+    baseMs: 150_000,
+    ceilingMs: 150_000,
+    targetTokens: 3000,
+    historyRate: 1 / 50,
+    lastRemaining: 20_000,
+    extended: false,
+  };
+  // byMs = 145_000，远超历史剩余 20_000 ⇒ 只允许小幅回涨，超出部分压回。
+  const eta = nextEta(anchor, 5_000, 0, model());
   assert.equal(eta.overrun, false);
+  assert.equal(eta.remainingMs, 20_000);
 });
 
-test('nextEta：超预估只补一次跑道，之后老实说「不知道」', () => {
-  const model0 = model();
-  const runway = clamp(model0.stepMs, TUNING.RUNWAY_MIN_MS, TUNING.RUNWAY_MAX_MS);
-  let anchor = { targetMs: 60_000, targetTokens: 3000, historyRate: 3000 / 150_000, lastRemaining: 0, granted: false };
-  let elapsed = 400_000;
+test('nextEta：p50 到 p75 之间只改口一次「最多约」，过了 p75 才说超预估', () => {
+  // 用显式分布，别依赖 normalHistory 的具体样本：p50 = 2.5min，p75 = 3.5min。
+  const base = {
+    targetMs: 150_000,
+    highMs: 210_000,
+    lowMs: 90_000,
+    targetTokens: 3000,
+    historyRate: 3000 / 150_000,
+    stepMs: 12_000,
+  };
+  const baseMs = base.targetMs;
+  const ceilingMs = base.highMs;
+  assert.ok(ceilingMs > baseMs, `p75 应大于中位数：${baseMs} → ${ceilingMs}`);
+  const anchor = {
+    targetMs: baseMs,
+    baseMs,
+    ceilingMs,
+    targetTokens: base.targetTokens,
+    historyRate: base.historyRate,
+    lastRemaining: 0,
+    extended: false,
+  };
 
-  // 第一次超出：给一步跑道，并记住已经补过。
-  const first = nextEta(anchor, elapsed, 30_000, model0);
-  assert.equal(first.overrun, true, '400s 应判超时');
-  assert.equal(first.stale, false, '第一次超时还不算 stale');
-  assert.equal(first.granted, true, '第一次超时必须标记已补跑道');
-  assert.ok(Number.isFinite(first.remainingMs) && first.remainingMs > 0, '第一次要给正数跑道');
-  assert.ok(first.remainingMs <= TUNING.RUNWAY_MAX_MS, `跑道超过封顶：${first.remainingMs}`);
-  assert.ok(first.remainingMs >= Math.min(runway, TUNING.RUNWAY_MAX_MS) - 1, '跑道比一步还短');
-  assert.ok(first.targetMs > 60_000 && first.targetMs <= elapsed + TUNING.RUNWAY_MAX_MS, `新目标不合理：${first.targetMs}`);
+  // 阶段 2：越过中位数但仍在 p75 内 —— 升级措辞，但给的数字是诚实上界。
+  const mid = nextEta(anchor, baseMs + 1_000, 0, base);
+  assert.equal(mid.overrun, true);
+  assert.equal(mid.extended, true);
+  assert.equal(mid.stale, false);
+  assert.equal(mid.targetMs, ceilingMs);
+  assert.ok(mid.remainingMs > 0 && mid.remainingMs <= ceilingMs - baseMs);
 
-  // 第二次超出：不再编数字，remainingMs 为 null，targetMs 不再变。
-  anchor = { ...anchor, targetMs: first.targetMs, lastRemaining: first.remainingMs, granted: first.granted };
-  for (let round = 0; round < 8; round += 1) {
-    elapsed += 30_000;
-    const eta = nextEta(anchor, elapsed, 30_000, model0);
-    assert.equal(eta.overrun, true, `第 ${round + 2} 次应判超时`);
-    assert.equal(eta.stale, true, '补过跑道后再超时必须是 stale');
-    assert.equal(eta.remainingMs, null, 'stale 状态不许再给出剩余时间');
-    assert.equal(eta.targetMs, first.targetMs, 'stale 状态目标不许再动');
-    anchor = { ...anchor, targetMs: eta.targetMs, granted: eta.granted };
+  // 阶段 2 每次问都是同一个上界，不会继续往后挪。
+  const later = nextEta({ ...anchor, extended: true, lastRemaining: mid.remainingMs }, baseMs + 2_000, 0, base);
+  assert.equal(later.targetMs, ceilingMs);
+  assert.equal(later.remainingMs, ceilingMs - (baseMs + 2_000));
+
+  // 阶段 3：越过 p75 —— 目标冻结，不再编数字。
+  let eta = nextEta({ ...anchor, extended: true }, ceilingMs + 1_000, 0, base);
+  assert.equal(eta.overrun, true);
+  assert.equal(eta.stale, true);
+  assert.equal(eta.remainingMs, null);
+  const frozen = eta.targetMs;
+  for (let round = 0; round < 5; round += 1) {
+    eta = nextEta({ ...anchor, extended: true }, ceilingMs + 60_000 * (round + 2), 0, base);
+    assert.equal(eta.stale, true, `第 ${round + 2} 次问必须直接说超预估`);
+    assert.equal(eta.remainingMs, null);
+    assert.equal(eta.targetMs, frozen);
   }
 });
 
-test('nextEta：目标缺失时不崩，返回有限跑道', () => {
-  const eta = nextEta({ targetMs: null, targetTokens: null, historyRate: null, lastRemaining: null }, 5_000, 100, model());
-  assert.ok(Number.isFinite(eta.remainingMs) && eta.remainingMs > 0);
-  assert.equal(eta.granted, true, '没有目标时补的跑道也要记账，避免每帧重补');
+test('nextEta：目标缺失时不崩，只给一次跑道', () => {
+  const noTarget = {
+    targetMs: null,
+    baseMs: null,
+    ceilingMs: null,
+    targetTokens: null,
+    historyRate: null,
+    lastRemaining: null,
+    extended: false,
+  };
+  const first = nextEta(noTarget, 5_000, 100, model());
+  assert.ok(Number.isFinite(first.remainingMs) && first.remainingMs > 0);
+  assert.ok(Number.isFinite(first.baseMs));
+  assert.equal(first.extended, true, '没有目标时补的跑道要记账，避免每帧重给');
+
+  const second = nextEta({ ...noTarget, extended: true }, 40_000, 100, model());
+  assert.equal(second.stale, true);
+  assert.equal(second.remainingMs, null);
 });
 
 test('intervalOf：p25 ≤ p50 ≤ p75，且剩余区间随时间收窄', () => {
