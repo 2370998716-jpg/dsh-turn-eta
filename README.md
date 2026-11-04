@@ -9,37 +9,46 @@
 
 ## 安装
 
-### 方式一：从插件市场（推荐）
+需要 Node.js ≥ 22.19（DSH 自带，一般不用管）。下面三种方式选一种。
 
-1. 打开 DSH 的**插件**页，切到 **发现** 标签。
-2. 在索引源里添加这一行：
+### 方式一：从仓库直接装（最稳）
 
 ```
-https://raw.githubusercontent.com/2370998716-jpg/dsh-turn-eta/main/index.json
+dsh plugin --profile <profile> add git+https://github.com/2370998716-jpg/dsh-turn-eta.git
 ```
 
-3. 列表里会出现「轮次耗时与费用预估」，点安装。
-4. **完全退出 DSH 再打开**（不是刷新页面）。
+`<profile>` 换成你正在用的 profile，桌面版一般是 `desktop`，Web 版是 `web`。
 
-### 方式二：本地文件夹
+Windows 上如果 `dsh` 不在 PATH 里，用完整路径：
 
-需要 Node.js ≥ 22.19（DSH 自带，一般不用管）。
+```
+cmd /c ""C:\Users\<你>\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add git+https://github.com/2370998716-jpg/dsh-turn-eta.git"
+```
 
-1. 把整个 `dsh-turn-eta` 文件夹放到任意位置（路径别带奇怪的符号）。
-2. 在终端执行（`<profile>` 换成你正在用的 profile，桌面版一般是 `desktop`，Web 版是 `web`）：
+### 方式二：从本地文件夹
+
+1. 把整个仓库文件夹放到任意位置（路径别带奇怪的符号）。
+2. 在终端执行：
 
 ```
 dsh plugin --profile <profile> add "<上面那个文件夹的绝对路径>"
 ```
 
-Windows 上如果 `dsh` 不在 PATH 里，用完整路径：
+### 方式三：从自定义索引源（要你的 DSH 有「发现」页）
+
+DSH 0.2.1 起，插件页如果有 **发现** 标签，可以在索引源里添加：
 
 ```
-cmd /c ""C:\Users\<你>\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "D:\your\path\dsh-turn-eta""
+https://raw.githubusercontent.com/2370998716-jpg/dsh-turn-eta/main/index.json
 ```
 
-3. **完全退出 DSH 再打开**（不是刷新页面）。宿主侧代码只在启动时加载，不重启看不到 `≈¥`。
-4. 打开任意对话，头部应该出现 `⏱ 0:03 · 120 tok · 60 tok/s · 估约 1:37`，输入框上方应该出现 `⚖ 预计 3.2k tok 产出 · 上下文 60k · ≈¥0.016 · ~0:22`。
+列表里会出现「轮次耗时与费用预估」。**没有「发现」标签的装法用方式一**，一样能装。
+
+### 装完
+
+**完全退出 DSH 再打开**（不是刷新页面）。宿主侧代码只在启动时加载，不重启看不到 `≈¥`。
+
+打开任意对话，头部应该出现 `⏱ 0:03 · 120 tok · 60 tok/s · 估约 1:37`，输入框上方应该出现 `⚖ 预计 3.2k tok 产出 · 上下文 60k · ≈¥0.016 · ~0:22`。
 
 第一条消息发出去之后，单轮统计才开始累计；预估会随历史轮次增加而变准。
 
