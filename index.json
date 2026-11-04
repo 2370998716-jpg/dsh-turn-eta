@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "title": {
+    "en": "dsh plugins by zuo",
+    "zh": "我做的 DSH 插件"
+  },
+  "description": {
+    "en": "Small, self-contained DeepSeek Harness plugins.",
+    "zh": "一些自用的 DeepSeek Harness 小插件。"
+  },
+  "metadata": {
+    "categories": {
+      "ui": {
+        "title": {
+          "en": "Interface",
+          "zh": "界面"
+        }
+      }
+    },
+    "labels": {
+      "timing": {
+        "title": {
+          "en": "Timing",
+          "zh": "耗时"
+        }
+      },
+      "cost": {
+        "title": {
+          "en": "Cost",
+          "zh": "费用"
+        }
+      }
+    },
+    "sortKeys": {}
+  },
+  "plugins": [
+    {
+      "name": "dsh-turn-eta",
+      "title": {
+        "en": "Turn ETA (turn timing + cost estimate)",
+        "zh": "轮次耗时与费用预估"
+      },
+      "description": {
+        "en": "Turn timing, token count, speed and a self-calibrating countdown in the conversation header, plus a pre-send estimate of output tokens, cost and duration.",
+        "zh": "DeepSeek Harness 插件：对话头部显示本轮耗时、token、速度与倒计时预估；发送前预估产出 token / 费用 / 时间。"
+      },
+      "author": "zuo",
+      "homepage": "https://github.com/2370998716-jpg/dsh-turn-eta#readme",
+      "repository": {
+        "url": "https://github.com/2370998716-jpg/dsh-turn-eta"
+      },
+      "metadata": {
+        "category": "ui",
+        "keywords": [
+          "dsh-plugin",
+          "deepseek-harness",
+          "dsh",
+          "turn",
+          "eta",
+          "tokens",
+          "cost"
+        ],
+        "labels": [
+          "timing",
+          "cost"
+        ],
+        "sortKeys": {}
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1793766191,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/2370998716-jpg/dsh-turn-eta",
+            "commit": "669635eddc44f132b92530d3288ca2d8d5b3d26e"
+          },
+          "engines": {}
+        }
+      ]
+    }
+  ]
+}
