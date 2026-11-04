@@ -44,6 +44,7 @@ const {
   historyModel,
   nextEta,
   intervalOf,
+  isPeakNow,
   estimateCost,
   money,
 } = bundle.__internals;
@@ -263,21 +264,62 @@ test('estimateCost：命中/未命中分开算，峰谷价切换', () => {
   const pricing = {
     peakEnabled: true,
     hasPeak: true,
-    peakWindows: [{ start: 0, end: 24 }],
+    peakWindows: [
+      { start: 1, end: 4 },
+      { start: 6, end: 10 },
+    ],
     peak: { miss: 0.3, hit: 0.006, out: 1.2 },
     offPeak: { miss: 0.15, hit: 0.003, out: 0.6 },
     fx: 7,
     symbol: '¥',
   };
+  // 固定在北京时间周三 10:00（UTC 02:00）这个真高峰点，避免测试随运行时刻漂移。
+  const peakMoment = new Date('2026-11-04T02:00:00Z');
   // 全命中、全峰时：100万 hit = 0.006 USD × 7 = 0.042
-  const hitOnly = estimateCost(pricing, 1_000_000, 1_000_000, 0);
+  const hitOnly = estimateCost(pricing, 1_000_000, 1_000_000, 0, peakMoment);
   assert.equal(hitOnly.peakNow, true);
   assert.ok(Math.abs(hitOnly.amount - 0.042) < 1e-9);
   // 混合：10k miss + 50k hit + 3.2k out = 0.003 + 0.0003 + 0.00384 USD → ×7
-  const mixed = estimateCost(pricing, 60_000, 50_000, 3200);
+  const mixed = estimateCost(pricing, 60_000, 50_000, 3200, peakMoment);
   assert.ok(Math.abs(mixed.amount - (0.003 + 0.0003 + 0.00384) * 7) < 1e-9);
+  // 同一笔账单挪到北京中午 12:30（非高峰）⇒ 单价减半
+  const off = estimateCost(pricing, 60_000, 50_000, 3200, new Date('2026-11-04T04:30:00Z'));
+  assert.equal(off.peakNow, false);
+  assert.ok(Math.abs(off.amount - mixed.amount / 2) < 1e-9);
   // 非法输入 → null，不冒充 0 元
   assert.equal(estimateCost(pricing, null, 0, 1000), null);
   assert.equal(estimateCost(pricing, 1000, 0, Number.NaN), null);
   assert.equal(estimateCost(null, 1000, 0, 1000), null);
+});
+
+test('isPeakNow：窗口按 UTC 小时，周末/节假日/生效时间按北京时间', () => {
+  const pricing = {
+    peakEnabled: true,
+    hasPeak: true,
+    peakWindows: [
+      { start: 1, end: 4 },
+      { start: 6, end: 10 },
+    ],
+    peakEffectiveAt: '2026-08-01T00:00:00Z',
+    peakHolidays: ['2026-10-01'],
+  };
+  // 周三：北京 10:00 高峰、12:30 空闲、15:00 高峰、19:00 空闲
+  assert.equal(isPeakNow(pricing, new Date('2026-11-04T02:00:00Z')), true);
+  assert.equal(isPeakNow(pricing, new Date('2026-11-04T04:30:00Z')), false);
+  assert.equal(isPeakNow(pricing, new Date('2026-11-04T07:00:00Z')), true);
+  assert.equal(isPeakNow(pricing, new Date('2026-11-04T11:00:00Z')), false);
+  // 周六同一时刻：不是高峰
+  assert.equal(isPeakNow(pricing, new Date('2026-11-07T02:00:00Z')), false);
+  // 节假日整天不算高峰
+  assert.equal(isPeakNow(pricing, new Date('2026-10-01T02:00:00Z')), false);
+  // 生效时间之前一律按基础价
+  assert.equal(isPeakNow(pricing, new Date('2026-07-31T02:00:00Z')), false);
+  // 关掉峰谷 / 没有峰会价 / 非法时间 ⇒ 都不是高峰
+  assert.equal(isPeakNow({ ...pricing, peakEnabled: false }, new Date('2026-11-04T02:00:00Z')), false);
+  assert.equal(isPeakNow({ ...pricing, hasPeak: false }, new Date('2026-11-04T02:00:00Z')), false);
+  assert.equal(isPeakNow(pricing, 'not-a-date'), false);
+  // 跨午夜窗口：22:00 → 次日 02:00（北京 06:00–10:00）也算高峰
+  const overnight = { ...pricing, peakWindows: [{ start: 22, end: 2 }], peakHolidays: [] };
+  assert.equal(isPeakNow(overnight, new Date('2026-11-04T23:30:00Z')), true);
+  assert.equal(isPeakNow(overnight, new Date('2026-11-04T12:00:00Z')), false);
 });

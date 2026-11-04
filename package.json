@@ -1,6 +1,6 @@
 {
   "name": "dsh-turn-eta",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "DeepSeek Harness 插件：对话头部显示本轮耗时、token、速度与倒计时预估；发送前预估产出 token / 费用 / 时间。",
   "keywords": [
     "dsh-plugin",

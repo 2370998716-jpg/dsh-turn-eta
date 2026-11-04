@@ -59,7 +59,9 @@ https://raw.githubusercontent.com/2370998716-jpg/dsh-turn-eta/main/index.json
 | 模型 | 缓存未命中 | 缓存命中 | 输出 |
 | --- | --- | --- | --- |
 | deepseek-flash / deepseek-v4-flash | 0.15 | 0.003 | 0.6 |
-| 高峰时段（1–4 点、6–10 点 UTC） | 翻倍 | | |
+| 高峰时段（1–4 点、6–10 点 UTC，即北京 9–12、14–18 点，仅周一至周五且非节假日） | 翻倍 | | |
+
+峰谷按 UTC 窗口判断，周几和节假日按北京时间算：周末、`peakHolidays` 里列出的日期、以及 `peakEffectiveAt` 之前的时间都按空闲价。这套字段和 `dsh-cost-meter` 的账本写法一致，直接抄它的 `config` 就能对齐。
 
 汇率默认 `7.2`。想改就新建：
 
