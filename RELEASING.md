@@ -1,26 +1,21 @@
 # 发版步骤
 
 这个仓库同时是「插件源码」和「插件市场的索引源」：`index.json` 放在仓库根，市场直接读
-`https://raw.githubusercontent.com/<用户名>/dsh-turn-eta/main/index.json`。
+**<https://raw.githubusercontent.com/2370998716-jpg/dsh-turn-eta/main/index.json>**
+（这一行就是「插件 → 发现 → 添加索引源」里要填的地址）。
 
-## 一次性准备（只在第一次做）
+## 一次性准备（已完成，留档备查）
 
-1. 在 GitHub 建一个空仓库，名字 `dsh-turn-eta`，**不要**勾选 README / .gitignore / License。
-2. 回到这个文件夹，把远端接上并推上去：
-
-```bash
-git remote add origin https://github.com/<用户名>/dsh-turn-eta.git
-git push -u origin main
-```
-
-3. 如果用户名不是 `zuo`，改两处再重推（代码 commit 的 SHA 不变，只有 `index.json` 变）：
+仓库建在 **`https://github.com/2370998716-jpg/dsh-turn-eta`**（公开），远端 `origin` 已接好、
+`main` 已跟踪 `origin/main`。当初的做法：
 
 ```bash
-# package.json 里的 repository.url / homepage 改成新地址，然后：
-node scripts/build-index.mjs --repo https://github.com/<用户名>/dsh-turn-eta --commit <代码 commit 的 SHA>
-git add -A && git commit --amend --no-edit   # index.json 属于第二个 commit
-git push
+gh repo create dsh-turn-eta --public --source=. --remote=origin --push
 ```
+
+⚠️ 这个账号名（`2370998716-jpg`）若是自动生成的，**改用户名会让上面的索引地址失效**；
+真要改名就得把 `package.json` 的 `repository.url` / `homepage`、`README.md` 里的索引地址一起改，
+重跑 `node scripts/build-index.mjs`，再推一次。
 
 ## 以后每次发版
 
@@ -44,7 +39,14 @@ git push
 最简单的做法是每次把新的 `{version, publishTimestamp, source}` 对象 push 到 `versions` 数组**最前面**，
 再跑一遍校验。
 
-## 本地先校验一遍（可选）
+## 本地先校验一遍（可选，本机已就绪）
+
+```bash
+cd ../../../.tmp-market-check   # default-workspace/.tmp-market-check，校验器已装好
+node check.mjs                  # 里面的路径和 URL 已按本仓库改好
+```
+
+从零装的话：
 
 ```bash
 mkdir -p ../.tmp-market-check && cd ../.tmp-market-check
@@ -56,8 +58,8 @@ npm i @deepseek-ai/dsh-plugin-market-index
 import { readFileSync } from 'node:fs'
 import { parseMarketIndex, marketInstallTarget } from '@deepseek-ai/dsh-plugin-market-index'
 const idx = parseMarketIndex(
-  JSON.parse(readFileSync('../dsh-turn-eta/index.json', 'utf8')),
-  'https://raw.githubusercontent.com/<用户名>/dsh-turn-eta/main/index.json',
+  JSON.parse(readFileSync('../plugins/dsh-turn-eta-standalone/index.json', 'utf8')),
+  'https://raw.githubusercontent.com/2370998716-jpg/dsh-turn-eta/main/index.json',
 )
 for (const p of idx.plugins) for (const v of p.versions) console.log(p.name, v.version, marketInstallTarget(p.name, v).spec)
 ```
