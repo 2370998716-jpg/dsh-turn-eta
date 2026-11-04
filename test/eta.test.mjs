@@ -126,6 +126,7 @@ test('nextEta：正常区间只降不涨，回涨被钳住', () => {
     targetTokens: 3000,
     historyRate: 3000 / 150_000,
     lastRemaining: null,
+    granted: false,
   };
   let previous = Infinity;
   for (let seconds = 0; seconds <= 120; seconds += 5) {
@@ -147,30 +148,39 @@ test('nextEta：样本刷新最多抬 REANCHOR_JUMP_MS，超过当噪声', () =>
   assert.equal(eta.overrun, false);
 });
 
-test('nextEta：超时不卡死，每次重给跑道且封顶 RUNWAY_MAX_MS', () => {
-  const anchor = { targetMs: 60_000, targetTokens: 3000, historyRate: 3000 / 150_000, lastRemaining: 0 };
-  let target = 60_000;
+test('nextEta：超预估只补一次跑道，之后老实说「不知道」', () => {
+  const model0 = model();
+  const runway = clamp(model0.stepMs, TUNING.RUNWAY_MIN_MS, TUNING.RUNWAY_MAX_MS);
+  let anchor = { targetMs: 60_000, targetTokens: 3000, historyRate: 3000 / 150_000, lastRemaining: 0, granted: false };
   let elapsed = 400_000;
-  const runway = clamp(model().stepMs, TUNING.RUNWAY_MIN_MS, TUNING.RUNWAY_MAX_MS);
 
-  for (let round = 0; round < 12; round += 1) {
-    const eta = nextEta({ ...anchor, targetMs: target, lastRemaining: 0 }, elapsed, 30_000, model());
-    assert.equal(eta.overrun, true, `第 ${round} 次应判超时`);
-    assert.ok(Number.isFinite(eta.remainingMs), '超时后 remainingMs 必须是有限值，不能是 Infinity');
-    assert.ok(eta.remainingMs > 0, '超时后必须给新的正数跑道，不能停在 0');
-    assert.ok(eta.remainingMs <= TUNING.RUNWAY_MAX_MS, `跑道超过封顶：${eta.remainingMs}`);
-    assert.ok(eta.remainingMs >= TUNING.RUNWAY_MIN_MS, `跑道低于下限：${eta.remainingMs}`);
-    // 跑道应接近 stepMs（正常样本下 stepMs≈7.9s），不应退化成 2 秒。
-    assert.ok(eta.remainingMs >= Math.min(runway, TUNING.RUNWAY_MAX_MS) - 1, '跑道比一步还短');
-    target = eta.targetMs;
-    elapsed = eta.targetMs + 1000; // 下一次又超了
-    anchor.lastRemaining = eta.remainingMs;
+  // 第一次超出：给一步跑道，并记住已经补过。
+  const first = nextEta(anchor, elapsed, 30_000, model0);
+  assert.equal(first.overrun, true, '400s 应判超时');
+  assert.equal(first.stale, false, '第一次超时还不算 stale');
+  assert.equal(first.granted, true, '第一次超时必须标记已补跑道');
+  assert.ok(Number.isFinite(first.remainingMs) && first.remainingMs > 0, '第一次要给正数跑道');
+  assert.ok(first.remainingMs <= TUNING.RUNWAY_MAX_MS, `跑道超过封顶：${first.remainingMs}`);
+  assert.ok(first.remainingMs >= Math.min(runway, TUNING.RUNWAY_MAX_MS) - 1, '跑道比一步还短');
+  assert.ok(first.targetMs > 60_000 && first.targetMs <= elapsed + TUNING.RUNWAY_MAX_MS, `新目标不合理：${first.targetMs}`);
+
+  // 第二次超出：不再编数字，remainingMs 为 null，targetMs 不再变。
+  anchor = { ...anchor, targetMs: first.targetMs, lastRemaining: first.remainingMs, granted: first.granted };
+  for (let round = 0; round < 8; round += 1) {
+    elapsed += 30_000;
+    const eta = nextEta(anchor, elapsed, 30_000, model0);
+    assert.equal(eta.overrun, true, `第 ${round + 2} 次应判超时`);
+    assert.equal(eta.stale, true, '补过跑道后再超时必须是 stale');
+    assert.equal(eta.remainingMs, null, 'stale 状态不许再给出剩余时间');
+    assert.equal(eta.targetMs, first.targetMs, 'stale 状态目标不许再动');
+    anchor = { ...anchor, targetMs: eta.targetMs, granted: eta.granted };
   }
 });
 
 test('nextEta：目标缺失时不崩，返回有限跑道', () => {
   const eta = nextEta({ targetMs: null, targetTokens: null, historyRate: null, lastRemaining: null }, 5_000, 100, model());
   assert.ok(Number.isFinite(eta.remainingMs) && eta.remainingMs > 0);
+  assert.equal(eta.granted, true, '没有目标时补的跑道也要记账，避免每帧重补');
 });
 
 test('intervalOf：p25 ≤ p50 ≤ p75，且剩余区间随时间收窄', () => {

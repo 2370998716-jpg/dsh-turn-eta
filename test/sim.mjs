@@ -49,8 +49,8 @@ const history = [
   { tokens: 1305, ms: 10740 },
 ];
 
-function render(view) {
-  refCursor = 0;
+function render(view, resetRefs = true) {
+  if (resetRefs) refCursor = 0;
   const element = component({ useProjection: () => view });
   if (element === null) return '(hidden)';
   return element.children;
@@ -102,16 +102,18 @@ if (!/^⚖ 预计 .+ tok 产出 · 上下文 60k · ≈¥0\.\d+ · ~\d+:\d\d$/.t
 refCursor = 0;
 console.log('运行中·收起   ', composer({ useProjection: () => ({ ...idleView, start: 1, end: null }) }));
 
-// 倒计时单调性（m00549 / v1.1.0）：平时「估约」只减不增；跑过冻结目标后允许
-// 一次「再给一步跑道」的重锚，但抬升幅度不得超过 TUNING.RUNWAY_MAX_MS，
-// 且不许再出现长时间卡在「快完了」（那是 1.0.0 的 bug）。
+// 倒计时单调性（m00549 / v1.1.0 / v1.1.1）：平时「估约」只减不增；跑过冻结
+// 目标时允许且只允许一次「再给一步跑道」的重锚（抬升 ≤ TUNING.RUNWAY_MAX_MS），
+// 之后第二轮起必须老实显示「超预估」，不许每帧重发同一段跑道假装还剩 0:15。
+// 每帧把 refCursor 归零＝复用同一批 useRef 槽位，组件实例与 anchor 才跨帧保留。
+refCursor = 0;
 const tuning = bundle.__internals.TUNING;
 const runwayMaxSeconds = Math.ceil(tuning.RUNWAY_MAX_MS / 1000);
 let previous = Number.POSITIVE_INFINITY;
-let previousSeconds = 0;
-let monotonic = true;
+let staleSeen = false;
+let staleAt = null;
 let reanchors = 0;
-for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900]) {
+for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900, 1200, 1500]) {
   const view = {
     turn: 42,
     start: Date.now() - seconds * 1000,
@@ -124,24 +126,26 @@ for (const seconds of [5, 10, 20, 40, 80, 160, 240, 400, 900]) {
     toolBusy: false,
   };
   const text = render(view);
+  const stale = text.includes('超预估');
   const hit = /估约 (\d+):(\d\d)/.exec(text);
-  const value = hit === null ? 0 : Number(hit[1]) * 60 + Number(hit[2]);
-  if (value > previous) {
-    if (value - previous > runwayMaxSeconds) {
-      monotonic = false;
-      console.log('  回涨过头', previous, '→', value, text);
-    } else {
+  if (stale) {
+    if (hit !== null) throw new Error(`STALE_WITH_COUNTDOWN: ${text}`);
+    if (staleAt === null) staleAt = seconds;
+    staleSeen = true;
+  } else {
+    if (staleSeen) throw new Error(`STALE_REGRESSED: ${seconds}s ${text}`);
+    if (hit === null) throw new Error(`NO_STATE: ${seconds}s ${text}`);
+    const value = Number(hit[1]) * 60 + Number(hit[2]);
+    if (value > previous) {
+      if (value - previous > runwayMaxSeconds) {
+        console.log('  回涨过头', previous, '→', value, text);
+        throw new Error('COUNTDOWN_REGRESSION');
+      }
       reanchors += 1;
     }
+    previous = value;
   }
-  if (hit === null && seconds >= 400) {
-    monotonic = false;
-    console.log('  卡在快完了', seconds, 's', text);
-  }
-  previous = value;
-  previousSeconds = seconds;
   console.log(`倒计时 ${String(seconds).padStart(3)}s`, text);
 }
-if (!monotonic) throw new Error('COUNTDOWN_REGRESSION');
-if (reanchors === 0) throw new Error('REANCHOR_NEVER_HAPPENED');
-console.log(`COUNTDOWN_OK (reanchors=${reanchors}, ${previousSeconds}s)`);
+if (!staleSeen) throw new Error('STALE_NEVER_REACHED');
+console.log(`COUNTDOWN_OK (reanchors=${reanchors}, stale-at=${staleAt}s)`);
