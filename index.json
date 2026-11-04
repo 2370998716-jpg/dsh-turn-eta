@@ -68,12 +68,12 @@
       },
       "versions": [
         {
-          "version": "1.1.1",
-          "publishTimestamp": 1793769996,
+          "version": "1.1.2",
+          "publishTimestamp": 1793789083,
           "source": {
             "type": "git",
             "url": "https://github.com/2370998716-jpg/dsh-turn-eta",
-            "commit": "32d15a6945d7e953488a21e4ef397eb258167714"
+            "commit": "4a93f97e110b6c075d72f2ec0206ad821f58a0f2"
           },
           "engines": {}
         }
