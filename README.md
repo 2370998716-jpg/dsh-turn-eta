@@ -88,6 +88,14 @@ dsh plugin --profile <profile> remove dsh-turn-eta
 - 历史记录存在 `~/.dsh/storages/dsh-turn-eta/history.json`，删掉就重新开始学。
 - 环境变量 `DSH_TURN_ETA_MODEL` 可以临时换用哪个模型的单价。
 
+## 反馈
+
+用着有问题、有想法、发现数字算错了，都欢迎直接发邮件：
+
+**2370998716@qq.com**
+
+写清楚「DSH 版本 + 你在哪个界面看到的什么数字不对」就够，不用客气。也可以去 [GitHub Issues](https://github.com/2370998716-jpg/dsh-turn-eta/issues) 提。
+
 ## License
 
 MIT © 2026 zuo

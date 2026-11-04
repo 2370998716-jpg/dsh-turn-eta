@@ -11,13 +11,20 @@
     "tokens",
     "cost"
   ],
-  "author": "zuo",
+  "author": {
+    "name": "zuo",
+    "email": "2370998716@qq.com"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/2370998716-jpg/dsh-turn-eta.git"
   },
   "homepage": "https://github.com/2370998716-jpg/dsh-turn-eta#readme",
+  "bugs": {
+    "url": "https://github.com/2370998716-jpg/dsh-turn-eta/issues",
+    "email": "2370998716@qq.com"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
