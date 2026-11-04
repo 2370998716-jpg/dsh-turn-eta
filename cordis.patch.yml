@@ -1,0 +1,7 @@
+# dsh-turn-eta bundle patch — inserts the turn-eta row into the profile.
+#
+# The row is inserted after the profile's own entries; a user-layer patch may
+# override it by the same id (last row with an id wins).
+- insert:
+    - id: turn-eta
+      name: 'dsh-turn-eta'
